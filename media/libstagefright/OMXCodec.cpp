@@ -286,6 +286,14 @@ uint32_t OMXCodec::getComponentQuirks(
                 index, "requies-loaded-to-idle-after-allocation")) {
       quirks |= kRequiresLoadedToIdleAfterAllocation;
     }
+    if (list->codecHasQuirk(
+                index, "requies-flush-before-disable")) {
+      quirks |= kNeedsFlushBeforeDisable;
+    }
+    if (list->codecHasQuirk(
+                index, "decoder-lies-about-nubmer-of-channels")) {
+      quirks |= kDecoderLiesAboutNumberOfChannels;
+    }
 
     return quirks;
 }
