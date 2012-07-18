@@ -369,6 +369,23 @@ sp<MediaSource> OMXCodec::Create(
 
         ALOGV("Attempting to allocate OMX node '%s'", componentName);
 
+#ifdef OMAP_COMPAT
+        if (!strcmp(componentName, "OMX.TI.Video.Decoder")) {
+            int32_t width, height;
+            bool success = meta->findInt32(kKeyWidth, &width);
+            success = success && meta->findInt32(kKeyHeight, &height);
+            CHECK(success);
+            // We need this for 720p video without AVC profile
+            // Not a good solution, but ..
+            if (width*height > 412800) {  //860*480
+               componentName = "OMX.TI.720P.Decoder";
+               ALOGE("Format exceed the decoder's capabilities. %d", width*height);
+               continue;
+            }
+        }
+#endif
+
+
         if (!createEncoder
                 && (quirks & kOutputBuffersAreUnreadable)
                 && (flags & kClientNeedsFramebuffer)) {
@@ -526,6 +543,17 @@ status_t OMXCodec::configureCodec(const sp<MetaData> &meta) {
             CODEC_LOGI(
                     "AVC profile = %u (%s), level = %u",
                     profile, AVCProfileToString(profile), level);
+
+            if (!strcmp(mComponentName, "OMX.TI.Video.Decoder")
+                && (profile != kAVCProfileBaseline || level > 31)) {
+                // This stream exceeds the decoder's capabilities. The decoder
+                // does not handle this gracefully and would clobber the heap
+                // and wreak havoc instead...
+
+                ALOGE("Profile and/or level exceed the decoder's capabilities.");
+                return ERROR_UNSUPPORTED;
+            }
+
         } else if (meta->findData(kKeyVorbisInfo, &type, &data, &size)) {
             addCodecSpecificData(data, size);
 
@@ -705,6 +733,22 @@ status_t OMXCodec::setVideoPortFormatType(
              portIndex,
              index, format.eCompressionFormat, format.eColorFormat);
 #endif
+
+        if (!strcmp("OMX.TI.Video.encoder", mComponentName)) {
+            if (portIndex == kPortIndexInput
+                    && colorFormat == format.eColorFormat) {
+                // eCompressionFormat does not seem right.
+                found = true;
+                break;
+            }
+            if (portIndex == kPortIndexOutput
+                    && compressionFormat == format.eCompressionFormat) {
+                // eColorFormat does not seem right.
+                found = true;
+                break;
+            }
+        }
+
 
         if (format.eCompressionFormat == compressionFormat
                 && format.eColorFormat == colorFormat) {
@@ -1398,6 +1442,9 @@ OMXCodec::OMXCodec(
       mPaused(false),
       mNativeWindow(
               (!strncmp(componentName, "OMX.google.", 11)
+#ifdef OMAP_COMPAT
+              || !strncmp(componentName, "OMX.TI.", 7)
+#endif
               || !strcmp(componentName, "OMX.Nvidia.mpeg2v.decode"))
                         ? NULL : nativeWindow) {
     mPortStatus[kPortIndexInput] = ENABLED;
