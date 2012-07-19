@@ -654,6 +654,12 @@ status_t OMXCodec::configureCodec(const sp<MetaData> &meta) {
         setMinBufferSize(kPortIndexInput, (OMX_U32)maxInputSize);
     }
 
+    if (!strcmp(mComponentName, "OMX.TI.AMR.encode")
+        || !strcmp(mComponentName, "OMX.TI.WBAMR.encode")
+        || !strcmp(mComponentName, "OMX.TI.AAC.encode")) {
+        setMinBufferSize(kPortIndexOutput, 8192); // XXX
+    }
+
     initOutputFormat(meta);
 
     if ((mFlags & kClientNeedsFramebuffer)
@@ -856,6 +862,10 @@ status_t OMXCodec::findTargetColorFormat(
     int32_t targetColorFormat;
     if (meta->findInt32(kKeyColorFormat, &targetColorFormat)) {
         *colorFormat = (OMX_COLOR_FORMATTYPE) targetColorFormat;
+    } else {
+        if (!strcasecmp("OMX.TI.Video.encoder", mComponentName)) {
+            *colorFormat = OMX_COLOR_FormatYCbYCr;
+        }
     }
 
     // Check whether the target color format is supported.
@@ -3479,6 +3489,13 @@ bool OMXCodec::drainInputBuffer(BufferInfo *info) {
     }
 
     info->mStatus = OWNED_BY_COMPONENT;
+
+    // This component does not ever signal the EOS flag on output buffers,
+    // Thanks for nothing.
+    if (mSignalledEOS && !strcmp(mComponentName, "OMX.TI.Video.encoder")) {
+        mNoMoreOutputData = true;
+        mBufferFilled.signal();
+    }
 
     return true;
 }
